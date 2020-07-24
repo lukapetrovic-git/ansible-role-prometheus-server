@@ -1,0 +1,114 @@
+---
+- name: Install pip
+  apt:
+    name: python3-pip
+    state: present
+    update_cache: yes
+
+- name: Install required python lib
+  pip:
+    name: passlib
+    state: present
+
+- name: Download Prometheus
+  get_url:
+    url: "{{ prometheus_url }}"
+    dest: /home/{{ansible_user}}/prometheus.tar.gz
+    checksum: "{{ prometheus_checksum }}"
+
+- name: Unarchive Prometheus
+  unarchive:
+    src: /home/{{ansible_user}}/prometheus.tar.gz
+    dest: /home/{{ansible_user}}
+    remote_src: yes
+
+- name: Copy Prometheus
+  copy:
+    src: /home/{{ansible_user}}/prometheus-2.19.2.linux-amd64/.
+    dest: /usr/local/bin/prometheus
+    remote_src: yes
+    mode: preserve
+
+- name: Setting permissions
+  file:
+    path: /usr/local/bin/prometheus/{{item}}
+    mode: '0755'
+  loop:
+    - prometheus
+    - promtool
+    - tsdb
+
+- name: Creating prometheus.service
+  template:
+    src: prometheus.service
+    dest: /etc/systemd/system/prometheus.service
+
+- name: Start Prometheus
+  service:
+    name: prometheus
+    state: started
+    enabled: yes
+
+- name: Install Nginx
+  apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: Install apache2-utils
+  apt:
+    name: apache2-utils
+    state: present
+
+- name: Create httpwd user
+  htpasswd: 
+    name: "{{ htpasswd_user }}"
+    password: "{{ htpasswd_pw }}"
+    state: present
+    create: yes
+    path: /etc/nginx/.htpasswd
+    mode: '0664'
+
+- name: Remove default Nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: Create Nginx site config
+  template:
+    src: prometheus
+    dest: /etc/nginx/sites-enabled/prometheus
+  notify:
+    - restart nginx
+
+- name: Allow port 9090 from localhost
+  iptables:
+    chain: INPUT
+    protocol: tcp
+    source: localhost
+    destination_port: '9090'
+    jump: ACCEPT
+
+- name: Drop port 9090 from anywhere else
+  iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: '9090'
+    jump: DROP
+
+- name: Install Iptables-persistent
+  apt:
+    name: iptables-persistent
+    state: present
+    update_cache: yes
+
+- name: Save iptable rules
+  shell:
+    cmd: iptables-save > /etc/iptables/rules.v4
+
+- name: Template prometheus.yml
+  template:
+    src: prometheus.yml
+    dest: /usr/local/bin/prometheus/prometheus.yml
+  notify:
+    - restart prometheus
