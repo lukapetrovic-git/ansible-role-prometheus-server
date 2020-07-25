@@ -1,5 +1,5 @@
 # Ansible role: Prometheus Server
-Simple Ansible Prometheus role
+Ansible Prometheus Server role for Ubuntu
 
 # Requirements
 No special requirements, note that this role requires root access, so either run with a global become: yes, or invoke the role in your playbook.
